@@ -34,34 +34,9 @@
         folder: "{{ vm_folder }}"
         
         # Opciones de Clonacion
-        template: "{{ vm_template_name }}" # <<-- CLONAR DESDE ESTA PLANTILLA
+        template: "{{ select_template | split(' - ')[0]  }}" # <<-- CLONAR DESDE ESTA PLANTILLA
         name: "{{ vm_name }}"
-        state: present                    # Asegura que la VM exista
-        
-        # Opciones de Almacenamiento
-        # IMPORTANTE: Si no especificas 'datastore' aqui, Ansible usara el de la plantilla.
-        # Si deseas cambiar el Datastore:
-        # datastore: "MiDatastore_Fast" 
-
-        # Opciones de Red (Opcional: Para cambiar la red de la plantilla)
-        networks:
-          - name: "VM Network Produccion" # Reemplaza con el nombre de la Red de destino
-            device_type: vmxnet3
-            # Opcional: Para asignacion estatica de IP (requiere guest customization)
-            # ip: 192.168.1.101
-            # netmask: 255.255.255.0
-            
-        # Hardware: Generalmente se hereda, pero puedes modificar RAM/CPU si es necesario.
-        # hardware:
-        #   memory_mb: 8192
-        #   num_cpus: 4
-
-        # Opcional: Personalizacion del SO (Guest Customization)
-        # customization:
-        #   autologon: yes
-        #   hostname: "{{ vm_name }}"
-        #   password: "{{ 'SuperSecretPass' | password_hash('sha512') }}"
-        #   # ... otras opciones de customization (Sysprep/Cloud-init)
+        state: present 
         
       delegate_to: localhost
       register: vm_clone_output

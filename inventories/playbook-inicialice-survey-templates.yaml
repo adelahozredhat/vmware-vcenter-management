@@ -18,36 +18,89 @@
   tasks:
     - name: Listar todas las VMs y Templates
       community.vmware.vmware_vm_info:
+        show_tag: true
+        show_allocated: true
         validate_certs: false # Ajusta según tu entorno
+        vm_type: template
+        show_attribute: true
       register: vm_info
 
     - name: Mostrar nombres de las plantillas encontradas
       debug:
-        msg: "{{validate_certs}}"
+        msg: "{{vm_info}}"
 
-    - name: Filtrar las Plantillas
-      set_fact:
-        # Filtra donde 'is_template' es True y extrae el nombre
-        template_names_list: "{{ vm_info.virtual_machines | selectattr('is_template', 'defined') | selectattr('is_template', 'equalto', true) | map(attribute='ansible_facts.vmware_guest_info.VirtualMachine.name') | list }}"
+    - name: Init controller variables
+      ansible.builtin.set_fact:
+        templates_names: []
+
+    - name: Init controller variables
+      ansible.builtin.set_fact:
+        templates_names: "{{ templates_names + [name] }}"
+      vars: 
+        name: "{{ item.guest_name }} - {{ item.guest_fullname }}"
+      loop: "{{vm_info.virtual_machines}}"
 
     - name: Mostrar nombres de las plantillas encontradas
       debug:
-        msg: "Plantillas encontradas: {{ template_names_list }}"
+        msg: "{{templates_names}}"
 
     - name: Crear o actualizar el Job Template en AWX
       awx.awx.job_template:
         name: "Despliegue de VM con Selección de Template"
+        description: "Despliegue de VM con Selección de Template"
         job_type: "run"
-        playbook: "deploy_vm.yml" 
-        project: "{{ project_name }}"
-        inventory: "{{ inventory_name }}"
-        credential: "{{ credential_name }}"
-        extra_vars: "{{ templates_json }}" # Inyecta las plantillas como extra_vars
-        ask_variables_on_launch: true 
-        controller_host: "{{ awx_host }}"
-        controller_username: "{{ awx_username }}"
-        controller_password: "{{ awx_password }}"
+        playbook: "playbook2.yaml" 
+        project: "repository_vmware_vcenter_management"
+        inventory: "Demo Inventory"
+        credential: "Prueba"
         validate_certs: false
+        survey_enabled: true
+        survey_spec:
+          name: "Despliegue de VM con Selección de Template"
+          description: "Despliegue de VM con Selección de Template"
+          spec:
+            - max: 1024
+              min: 0
+              type: text
+              required: True
+              variable: vm_name
+              new_question: True
+              question_name: vm_name
+              question_description: !unsafe "vm_name"
+            - max: 1024
+              min: 0
+              type: multiplechoice
+              choices: "{{templates_names}}"
+              required: True
+              variable: "select_template"
+              new_question: True
+              question_name: "select_template"
+              question_description: "select_template"
+              default: ""
+            - max: 1024
+              min: 0
+              type: text
+              required: True
+              variable: vm_folder
+              new_question: True
+              question_name: vm_folder
+              question_description: !unsafe "vm_folder"
+            - max: 1024
+              min: 0
+              type: text
+              required: True
+              variable: cluster_name
+              new_question: True
+              question_name: cluster_name
+              question_description: !unsafe "cluster_name"
+            - max: 1024
+              min: 0
+              type: text
+              required: True
+              variable: datacenter_name
+              new_question: True
+              question_name: datacenter_name
+              question_description: !unsafe "datacenter_name"
         state: "present"
       register: awx_job_template
 
