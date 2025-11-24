@@ -1,0 +1,50 @@
+---
+- name: Crear una nueva Maquina Virtual en vCenter
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  # Variables para la conexion y la nueva VM
+  vars:
+    vcenter_hostname: "{{ vcenter_host }}"  # Variable de AWX o Inventario
+    vcenter_username: "{{ vcenter_user }}"  # Variable de AWX o Inventario/Vault
+    vcenter_password: "{{ vcenter_pass }}"  # Variable de AWX o Inventario/Vault
+    datacenter_name: "MiDatacenter"       # Reemplaza con tu Datacenter
+    cluster_name: "MiCluster"             # Reemplaza con tu Cluster
+    vm_name: "nueva_vm_ansible_01"        # Nombre de la nueva VM
+    guest_os_id: "centos7_64Guest"        # ID del SO (p. ej., "windows8Server64Guest")
+    # Para obtener la lista completa de IDs de SO, consulta la documentacion de VMware.
+
+  tasks:
+    - name: 1. Crear la Maquina Virtual usando community.vmware.vmware_vm
+      community.vmware.vmware_vm:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: false  # Considera usar 'true' en entornos de produccion y configurar certificados
+        datacenter: "{{ datacenter_name }}"
+        cluster: "{{ cluster_name }}"
+        name: "{{ vm_name }}"
+        state: present
+        guest_id: "{{ guest_os_id }}"
+        hardware:
+          memory_mb: 4096      # 4 GB de RAM
+          num_cpus: 2          # 2 vCPUs
+          scsi_controller: lsilogic
+        disks:
+          - size_gb: 50        # Disco de 50 GB
+            type: thin
+            datastore: "MiDatastore" # Reemplaza con tu Datastore
+        networks:
+          - name: "VM Network" # Reemplaza con el nombre de tu Red
+            device_type: vmxnet3
+            ip: 192.168.1.100  # Opcional: Asignacion estatica de IP
+            netmask: 255.255.255.0
+        # Opcional: Especificar plantilla (template) para clonar
+        # template: "MiPlantillaBase"
+      delegate_to: localhost
+      register: vm_creation_output
+
+    - name: 2. Mostrar resultado de la creacion
+      ansible.builtin.debug:
+        msg: "La VM '{{ vm_name }}' ha sido creada con exito."

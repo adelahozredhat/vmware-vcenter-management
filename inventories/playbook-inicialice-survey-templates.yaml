@@ -1,0 +1,54 @@
+---
+- name: Obtener Templates de VM en vCenter (Usando community.vmware)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    vcenter_hostname: "your_vcenter_fqdn" # Cambia esto
+    # Se recomienda usar un 'vmware_user' y 'vmware_password'
+    # en un archivo de credenciales o un Vault para este módulo.
+    # Alternativamente, puedes usar las variables de entorno:
+    # VMWARE_USER, VMWARE_PASSWORD, VMWARE_SERVER, VMWARE_VALIDATE_CERTSawx_host: "https://your_awx_host" 
+    awx_username: "awx_user" 
+    awx_password: "awx_password" 
+    project_name: "MiProyectoVM" 
+    inventory_name: "InventarioVMware" 
+    credential_name: "CredentialVMware"
+    
+  tasks:
+    - name: Listar todas las VMs y Templates
+      community.vmware.vmware_vm_info:
+        validate_certs: false # Ajusta según tu entorno
+      register: vm_info
+
+    - name: Mostrar nombres de las plantillas encontradas
+      debug:
+        msg: "{{validate_certs}}"
+
+    - name: Filtrar las Plantillas
+      set_fact:
+        # Filtra donde 'is_template' es True y extrae el nombre
+        template_names_list: "{{ vm_info.virtual_machines | selectattr('is_template', 'defined') | selectattr('is_template', 'equalto', true) | map(attribute='ansible_facts.vmware_guest_info.VirtualMachine.name') | list }}"
+
+    - name: Mostrar nombres de las plantillas encontradas
+      debug:
+        msg: "Plantillas encontradas: {{ template_names_list }}"
+
+    - name: Crear o actualizar el Job Template en AWX
+      awx.awx.job_template:
+        name: "Despliegue de VM con Selección de Template"
+        job_type: "run"
+        playbook: "deploy_vm.yml" 
+        project: "{{ project_name }}"
+        inventory: "{{ inventory_name }}"
+        credential: "{{ credential_name }}"
+        extra_vars: "{{ templates_json }}" # Inyecta las plantillas como extra_vars
+        ask_variables_on_launch: true 
+        controller_host: "{{ awx_host }}"
+        controller_username: "{{ awx_username }}"
+        controller_password: "{{ awx_password }}"
+        validate_certs: false
+        state: "present"
+      register: awx_job_template
+
+    # El resultado final que necesitas para el paso 2 es 'template_names_list'

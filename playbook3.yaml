@@ -1,0 +1,46 @@
+---
+- name: Actualizar Tarea de Jira (Comentar y Transicionar)
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  # Variables para la conexion y la tarea
+  vars:
+    # Variables de Conexion (gestionadas idealmente por AWX Vault/Credenciales)
+    jira_url: "{{ jira_server_url }}"     # URL base de tu instancia de Jira
+    jira_user: "{{ jira_username }}"       # Usuario o email (si usas Token)
+    jira_token: "{{ jira_api_token }}"     # Token de API de Jira (Recomendado sobre password)
+    
+    # Variables de Tarea (gestionadas por AWX Survey/Entrada manual)
+    issue_key: "{{ tarea_id }}"            # ID de la tarea de Jira (ej: PROYECTO-123)
+    nuevo_comentario: "Despliegue completado con Ansible. Procediendo al estado 'Done'."
+    estado_destino: "Done"                 # Nombre del estado al que deseas mover la tarea (ej: 'In Progress', 'Done', 'Review')
+
+  tasks:
+    - name: 1. Añadir Comentario a la Tarea de Jira
+      community.general.jira:
+        url: "{{ jira_url }}"
+        username: "{{ jira_user }}"
+        password: "{{ jira_token }}"
+        issue: "{{ issue_key }}"
+        action: add_comment
+        comment: "{{ nuevo_comentario }}"
+      delegate_to: localhost
+      register: comment_result
+
+    - name: 2. Transicionar (Cambiar de Estado) la Tarea de Jira
+      community.general.jira:
+        url: "{{ jira_url }}"
+        username: "{{ jira_user }}"
+        password: "{{ jira_token }}"
+        issue: "{{ issue_key }}"
+        action: transition
+        transition: "{{ estado_destino }}" # Se usa el nombre del estado/transición
+      delegate_to: localhost
+      register: transition_result
+      
+    - name: 3. Mostrar resultados
+      ansible.builtin.debug:
+        msg: |
+          Comentario añadido exitosamente a {{ issue_key }}.
+          Transición a '{{ estado_destino }}' realizada con éxito.
