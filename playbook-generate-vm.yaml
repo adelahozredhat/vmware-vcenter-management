@@ -1,0 +1,34 @@
+---
+- name: Clonar una Maquina Virtual desde una Plantilla en vCenter
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  tasks:
+    - name: 1. Clonar la Maquina Virtual desde la Plantilla
+      community.vmware.vmware_guest:
+        validate_certs: false # Desactivar verificacion SSL (usar 'true' si tienes certificados validos)
+        
+        # Opciones de Infraestructura
+        datacenter: "{{ datacenter_name }}"
+        cluster: "{{ cluster_name }}"
+        folder: "{{ vm_folder }}"
+        
+        # Opciones de Clonacion
+        template: "{{ (select_template | split(' - '))[0]  }}" # <<-- CLONAR DESDE ESTA PLANTILLA
+        #esxi_hostname: "{{vm_esxi_hostname| default ('') }}"
+        datastore: "{{ select_datastore | default (omit) }}"
+        hardware:
+            scsi: "{{ scsi_vm | default (omit) }}"
+            memory_mb: "{{ vm_ram | default (omit) }}"
+            num_cpus: "{{ vm_cpus | default (omit) }}"
+
+        name: "{{ vm_name }}"
+        state: "{{ state_vm | default('present')}}" 
+        
+      delegate_to: localhost
+      register: vm_clone_output
+
+    - name: 2. Mostrar estado de la nueva VM
+      ansible.builtin.debug:
+        msg: "La VM '{{ vm_name }}' ha sido clonada exitosamente desde la plantilla '{{ select_template }}'."

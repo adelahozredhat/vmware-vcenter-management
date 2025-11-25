@@ -1,0 +1,258 @@
+---
+- name: Obtener Templates de VM en vCenter (Usando community.vmware)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Listar todas las VMs y Templates
+      community.vmware.vmware_vm_info:
+        show_tag: true
+        show_allocated: true
+        validate_certs: false # Ajusta según tu entorno
+        vm_type: template
+        show_attribute: true
+      register: vm_info
+
+    - name: Mostrar nombres de las plantillas encontradas
+      debug:
+        msg: "{{vm_info}}"
+
+    - name: Init controller variables
+      ansible.builtin.set_fact:
+        templates_names: []
+
+    - name: Init controller variables
+      ansible.builtin.set_fact:
+        templates_names: "{{ templates_names + [name] }}"
+      vars: 
+        name: "{{ item.guest_name }} - {{ item.guest_fullname }}"
+      loop: "{{vm_info.virtual_machines}}"
+
+    - name: Mostrar nombres de las plantillas encontradas
+      debug:
+        msg: "{{templates_names}}"
+
+    - name: Gather info from standalone ESXi server having datacenter as 'ha-datacenter'
+      community.vmware.vmware_datastore_info:
+        validate_certs: false
+      register: datastore_info
+
+    - name: Mostrar nombres de las plantillas encontradas
+      debug:
+        msg: "{{datastore_info}}"
+
+    - name: Init controller variables
+      ansible.builtin.set_fact:
+        datastore_names: []
+
+    - name: Init controller variables
+      ansible.builtin.set_fact:
+        datastore_names: "{{ datastore_names + [item.name] }}"
+      loop: "{{datastore_info.datastores}}"
+
+    - name: Mostrar nombres de las plantillas encontradas
+      debug:
+        msg: "{{datastore_names}}"
+
+    - name: Gather information about all datacenters
+      community.vmware.vmware_datacenter_info:
+        validate_certs: false
+      register: datacenter_info
+
+    - name: Mostrar nombres de las plantillas encontradas
+      debug:
+        msg: "{{datacenter_info}}"
+
+    - name: Init controller variables
+      ansible.builtin.set_fact:
+        datacenter_names: []
+
+    - name: Init controller variables
+      ansible.builtin.set_fact:
+        datacenter_names: "{{ datacenter_names + [item.name] }}"
+      loop: "{{datacenter_info.datacenter_info}}"
+
+    - name: Mostrar nombres de las plantillas encontradas
+      debug:
+        msg: "{{datacenter_names}}"
+
+    - name: Gather info from standalone ESXi server having datacenter as 'ha-datacenter'
+      vmware.vmware.cluster_info:
+        validate_certs: false
+        datacenter: "{{item}}"
+      register: cluster_info
+      loop: "{{datacenter_names}}"
+
+    - name: Mostrar nombres de las plantillas encontradas
+      debug:
+        msg: "{{cluster_info}}"
+
+    - name: Init controller variables
+      ansible.builtin.set_fact:
+        cluster_names: []
+
+    - name: Init controller variables
+      ansible.builtin.set_fact:
+        cluster_names: "{{ cluster_names + (item.clusters.keys()|list) }}"
+      loop: "{{cluster_info.results}}"
+
+    - name: Mostrar nombres de las plantillas encontradas
+      debug:
+        msg: "{{cluster_names}}"
+
+    - name: Provide information about vCenter folders
+      community.vmware.vmware_folder_info:
+        validate_certs: false
+        datacenter: "{{item}}"
+      register: folder_info
+      loop: "{{datacenter_names}}"
+
+    - name: Mostrar nombres de las plantillas encontradas
+      debug:
+        msg: "{{folder_info}}"
+
+    - name: Init controller variables
+      ansible.builtin.set_fact:
+        folder_names: []
+
+    - name: Init controller variables
+      ansible.builtin.set_fact:
+        folder_names: "{{ folder_names + (item.flat_folder_info|json_query('[].path')) }}"
+      loop: "{{folder_info.results}}"
+
+    - name: Mostrar nombres de las plantillas encontradas
+      debug:
+        msg: "{{folder_names}}"
+
+
+    - name: Crear o actualizar el Job Template en AWX
+      awx.awx.job_template:
+        name: "Despliegue de VM con Selección de Template"
+        description: "Despliegue de VM con Selección de Template"
+        job_type: "run"
+        playbook: "playbook-generate-vm.yaml" 
+        project: "repository_vmware_vcenter_management"
+        inventory: "Demo Inventory"
+        credential: "VCenter"
+        validate_certs: false
+        survey_enabled: true
+        survey_spec:
+          name: "Despliegue de VM con Selección de Template"
+          description: "Despliegue de VM con Selección de Template"
+          spec:
+            - max: 1024
+              min: 0
+              type: text
+              required: True
+              variable: vm_name
+              new_question: True
+              question_name: vm_name
+              question_description: !unsafe "vm_name"
+            # - max: 1024
+            #   min: 0
+            #   type: text
+            #   required: false
+            #   variable: vm_esxi_hostname
+            #   new_question: True
+            #   question_name: vm_esxi_hostname
+            #   question_description: !unsafe "vm_esxi_hostname"
+            #   default: ""
+            - max: 1024
+              min: 0
+              type: multiplechoice
+              choices: "{{templates_names}}"
+              required: True
+              variable: "select_template"
+              new_question: True
+              question_name: "select_template"
+              question_description: "select_template"
+              default: ""
+            - max: 1024
+              min: 0
+              type: multiplechoice
+              choices: "{{datastore_names}}"
+              required: false
+              variable: "select_datastore"
+              new_question: True
+              question_name: "select_datastore"
+              question_description: "select_datastore"
+              default: ""
+            - max: 1024
+              min: 0
+              type: multiplechoice
+              choices: 
+                - present
+                - poweredon
+                - poweredoff
+                - suspended
+                - restarted
+              required: True
+              variable: "state_vm"
+              new_question: True
+              question_name: "state_vm"
+              question_description: "state_vm"
+              default: "poweredon"
+            - max: 1024
+              min: 0
+              type: multiplechoice
+              choices: 
+                - buslogic
+                - lsilogic
+                - lsilogicsas
+                - paravirtual
+              required: false
+              variable: "scsi_vm"
+              new_question: True
+              question_name: "scsi_vm"
+              question_description: "scsi_vm"
+              default: ""
+            - max: 1024
+              min: 0
+              type: integer
+              required: false
+              variable: vm_ram
+              new_question: True
+              question_name: vm_ram
+              question_description: !unsafe "vm_ram"
+            - max: 1024
+              min: 0
+              type: integer
+              required: false
+              variable: vm_cpus
+              new_question: True
+              question_name: vm_cpus
+              question_description: !unsafe "vm_cpus"
+            - max: 1024
+              min: 0
+              type: multiplechoice
+              choices: "{{folder_names}}"
+              required: True
+              variable: "vm_folder"
+              new_question: True
+              question_name: "vm_folder"
+              question_description: "vm_folder"
+              default: ""
+            - max: 1024
+              min: 0
+              type: multiplechoice
+              choices: "{{cluster_names}}"
+              required: True
+              variable: "cluster_name"
+              new_question: True
+              question_name: "cluster_name"
+              question_description: "cluster_name"
+              default: ""
+            - max: 1024
+              min: 0
+              type: multiplechoice
+              choices: "{{datacenter_names}}"
+              required: True
+              variable: "datacenter_name"
+              new_question: True
+              question_name: "datacenter_name"
+              question_description: "datacenter_name"
+              default: ""
+        state: "present"
+      register: awx_job_template
+
+    # El resultado final que necesitas para el paso 2 es 'template_names_list'
