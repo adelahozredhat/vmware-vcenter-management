@@ -1,0 +1,86 @@
+---
+- name: Clonar una Maquina Virtual desde una Plantilla en vCenter
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  tasks:
+
+    - name: Obtener Token de Acceso (OAuth2)
+      ansible.builtin.uri:
+        url: "https://login.microsoftonline.com/{{ tenant_id }}/oauth2/v2.0/token"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          client_id: "{{ client_id }}"
+          scope: "https://graph.microsoft.com/.default"
+          client_secret: "{{ client_secret }}"
+          grant_type: "client_credentials"
+      register: token_result
+
+    - name: Convertir enlace de OneDrive a descarga directa
+      set_fact:
+        # OneDrive requiere que el enlace se codifique en base64 y se le añada un prefijo
+        direct_download_url: "{{ 'u!' + (onedrive_share_link | b64encode | replace('/', '_') | replace('+', '-') | regex_replace('=+$', '')) }}"
+
+    - name: Descargar el fichero CSV
+      ansible.builtin.get_url:
+        url: "https://api.onedrive.com/v1.0/shares/{{ direct_download_url }}/root/content"
+        dest: "./Plantilla-Solicitud Alta VM.csv"
+        mode: '0644'
+        headers:
+          Authorization: "Bearer {{ token_result.json.access_token }}"
+
+
+    - name: Leer plantilla de solicitud de VM
+      community.general.read_csv:
+        path: "../Plantilla-Solicitud Alta VM.csv"
+      register: excel_data
+
+    - name: Extraer celdas específicas por coordenadas
+      set_fact:
+        nombre_vm: "{{ excel_data.list[1][1] }}"
+        entorno:   "{{ excel_data.list[5][1] }}"
+        vcpus:     "{{ excel_data.list[17][1] }}"
+        ram:       "{{ excel_data.list[18][1] }}"
+        disco:     "{{ excel_data.list[19][1] }}"
+        so_info:   "{{ excel_data.list[16][3] }}"
+
+    - name: Mostrar resultados
+      debug:
+        msg: "La VM {{ nombre_vm }} tiene {{ vcpus }} vCPUs y SO: {{ so_info }}"
+
+    - name: 1. Clonar la Maquina Virtual desde la Plantilla
+      community.vmware.vmware_guest:
+        validate_certs: false # Desactivar verificacion SSL (usar 'true' si tienes certificados validos)
+        
+        # Opciones de Infraestructura
+        datacenter: "{{ datacenter_name }}"
+        cluster: "{{ cluster_name }}"
+        folder: "{{ vm_folder }}"
+        
+        # Opciones de Clonacion
+        template: "{{ (select_template | split(' - '))[0]  }}" # <<-- CLONAR DESDE ESTA PLANTILLA
+        #esxi_hostname: "{{vm_esxi_hostname| default ('') }}"
+        datastore: "{{ select_datastore | default (omit) }}"
+        disk:
+          - size_gb: "{{ disco | int }}"  # Convertimos a entero el valor del CSV
+            type: thin                     # thin, thick o eagerzeroedthick
+            datastore: "datastore_pro_01"
+            scsi_controller: 0
+            unit_number: 0
+            scsi_type: "lsilogicsas"
+        hardware:
+          scsi: "{{ scsi_vm | default (omit) }}"
+          memory_mb: "{{ ram | int * 1024 | default (omit) }}"
+          num_cpus: "{{ vcpus | default (omit) }}"
+
+        name: "{{ nombre_vm }}"
+        state: "{{ state_vm | default('present')}}" 
+        
+      delegate_to: localhost
+      register: vm_clone_output
+
+    - name: 2. Mostrar estado de la nueva VM
+      ansible.builtin.debug:
+        msg: "La VM '{{ vm_name }}' ha sido clonada exitosamente desde la plantilla '{{ select_template }}'."
